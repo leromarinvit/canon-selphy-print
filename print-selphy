@@ -110,9 +110,15 @@ preview=false
 border=false
 round=false
 cups_printer_name="Canon_SELPHY_CP1300"
-use_kde_dialogs=true
-dialog_title="Canon CP1300 Selphy Printer"
+
 default_printtype="postcard" # Set to "" to use command line parameter <print type> 
+
+use_kde_dialogs=true # Set to true to use KDEs kdialog instead of command line
+dialog_title="Canon CP1300 Selphy Printer"
+
+# viewer="display"
+viewer='feh --scale-down -'
+
 
 
 POSITIONAL=()
@@ -242,14 +248,32 @@ for ex in \
  identify convert lpq lpr bc display readlink cat
   do
     which "${ex}" &>/dev/null || {
-        >&2 error_message "${ex} is missing"
+        >&2 error_message "The program '${ex}' is missing"
         check=false
     }
 done
 
+
+if [ "$use_kde_dialogs" = true ]; then
+    which "kdialog" &>/dev/null || {
+        >&2 error_message "the program 'kdialog' is missing"
+        check=false
+    }
+fi
+
+
+if [ "$viewer" != "display" ]; then
+    which "feh" &>/dev/null || {
+        >&2 error_message "The program 'feh' is missing"
+        check=false
+    }
+fi
+
+
+
 if ! ${check}
   then
-    >&2 error_message "Some utilities are missing"
+    >&2 error_message "Some utilities are missing, quitting"
     exit 1
 fi
 
@@ -266,7 +290,7 @@ $preview || lpq -P "${cups_printer_name}" >/dev/null 2>&1 || {
 }
 
 $preview \
-    && print_or_preview="display" \
+    && print_or_preview="$viewer" \
     || print_or_preview="lpr -o raw -P ${cups_printer_name}"
 
 
@@ -363,6 +387,7 @@ while [ "$#" -gt 0 ]
         fi
         if [ $n == 8 ]
           then
+          
             n=0
             # Combine all files
             convert -page "+44+35" -background white -flatten \

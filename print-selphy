@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# print-selphy-postcard
+# print-selphy
 # 
 # Print postcard-sized (148x100mm, 5.8 x 3.9in) images
 # on a Canon Selphy CP1200 and compatible photo printers
@@ -77,6 +77,29 @@ print_help () {
   echo
 }
 
+info_messagePID=""
+info_message() {
+    >&2 printf "$1"
+    if [ "$use_kde_dialogs" = true ]; then
+#         kdialog --msgbox "$1" --title "$dialog_title" & info_messagePID=$! 
+        kdialog --passivepopup "$1" --title "$dialog_title" & info_messagePID=$! 
+    fi
+}
+
+# hide_info_message() {
+#     if [ "$use_kde_dialogs" = true ]; then
+#       kill $info_messagePID &>/dev/null
+#     fi
+# }
+
+error_message() {
+    >&2 printf "$1"
+    if [ "$use_kde_dialogs" = true ]; then
+        kdialog --error "$1" --title "$dialog_title"
+    fi
+}
+
+
 
 ### Parse command line arguments
 
@@ -86,7 +109,11 @@ global_crop=false
 preview=false
 border=false
 round=false
-cups_printer_name="Canon_SELPHY_CP1200"
+cups_printer_name="Canon_SELPHY_CP1300"
+use_kde_dialogs=true
+dialog_title="Canon CP1300 Selphy Printer"
+default_printtype="postcard" # Set to "" to use command line parameter <print type> 
+
 
 POSITIONAL=()
 while [[ $# -gt 0 ]]
@@ -135,7 +162,7 @@ do
         *)    # unknown option
           if [[ "$k" =~ ^- ]]
             then
-              >&2 echo "unknown option '$k'"
+              >&2 error_message "unknown option '$k'"
               usage
               exit 1
             else
@@ -150,16 +177,22 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 
 if [ $# == 0 ]
   then
+    error_message "Missing Parameters.\nPlease see command line for help"
     usage
     exit 1
 fi
 
 # Check print type
-print_type="$1"
-shift
+if [ "$default_printtype" = "" ]; then
+    print_type="$1"
+    shift
+else
+    print_type="$default_printtype"
+fi
+
 if [ "$#" -lt 1 ]
   then
-    >&2 echo "Need at least one image file"
+    >&2 error_message "Need at least one image file"
     exit 1
 fi
 
@@ -193,13 +226,14 @@ case $print_type in
         final_extent="1088x668"
         expected_ratio="5/4"
         tmpdir=$(mktemp -dp "/tmp" "selphy-print.XXXXXX") || {
-            >&2 echo "Cannot create tmp directory in /tmp"
+            >&2 error_message "Cannot create tmp directory in /tmp!"
             exit 1
         }
         trap "exit 1" TERM HUP INT ERR
         trap "[ -d $tmpdir ] && rm -f $tmpdir/t[1-8].png && rmdir $tmpdir" 0
         ;;
-    *) >&2 echo "Unknown print type: $print_type"
+    *)
+        >&2 error_message "Unknown print type: $print_type"
         exit 1 ;;
 esac
  
@@ -208,26 +242,26 @@ for ex in \
  identify convert lpq lpr bc display readlink cat
   do
     which "${ex}" &>/dev/null || {
-        >&2 echo "${ex} is missing"
+        >&2 error_message "${ex} is missing"
         check=false
     }
 done
 
 if ! ${check}
   then
-    >&2 echo "Some utilities are missing"
+    >&2 error_message "Some utilities are missing"
     exit 1
 fi
 
 # Border mask
 bordermaskfile=$(dirname $(readlink -f $0))/card-border-mask.png
 $round && [ ! -f "${bordermaskfile}" ] && {
-    >&2 echo "File ${bordermaskfile} is missing"
+    >&2 error_message "File ${bordermaskfile} is missing"
     exit 1
 }
 
 $preview || lpq -P "${cups_printer_name}" >/dev/null 2>&1 || {
-    >&2 echo "Can't check printer ${cups_printer_name} status"
+    >&2 error_message "Can't check printer ${cups_printer_name} status"
     exit 1
 }
 
@@ -243,19 +277,18 @@ n=0
 while [ "$#" -gt 0 ]
   do
     image="$1"
-    echo "Processing image ${image}..."
 
     # Does file exists?
     if ! [ -f "$image" ]
-      then
-        >&2 echo "Image $image not found"
+      then        
+        >&2 error_message "Image $image not found"
         exit 1 
     fi
 
     # Portrait or landscape?
     read img_width img_height < <(identify -format "%w %h" "$image") || true
     ( [ -z "$img_width" ] || [ -z "$img_height" ] ) && {
-        >&1 echo "Cannot read geometry of image $image"
+        >&1 error_message "Cannot read geometry of image $image"
         exit 1
     }
     [ "$img_width" -lt "$img_height" ] && portrait=true || portrait=false
@@ -280,17 +313,28 @@ while [ "$#" -gt 0 ]
             || ratio="${img_width}/${img_height}"
         if [ "$(echo "($ratio < ($expected_ratio*(1+${ratio_tol}/100))) && ("$ratio" > ($expected_ratio*(1-${ratio_tol}/100)))" | bc -l)" != 1 ]
         then
-          echo "Image $image aspect ratio does not seems to be ${expected_ratio}."
+#           error_message "Image $image aspect ratio does not seems to be ${expected_ratio}."
+          msg="Image $image aspect ratio does not seems to be ${expected_ratio}."
+          info_message "Error: $msg"
           while true
-          do
-            echo -n "Crop, Fit, Abort? "
-            read answ
-            case ${answ,,} in
-              "c"|"crop") break ;;
-              "f"|"fit") this_crop=false; break ;;
-              "a"|"abort") exit 1 ;;
-              *) echo "Unknown answer" ;;
-            esac
+          do          
+            if [ "$use_kde_dialogs" = true ]; then
+              kdialog --warningyesnocancel "$msg\n\nPress Yes to Crop,\nNo to Fit or\nCancel to abort." --title "$dialog_title"
+              case $? in
+                0) break ;;
+                1) this_crop=false; break ;;
+                2) exit 1 ;;
+              esac
+            else          
+              echo -n "Crop, Fit, Abort? "
+              read answ
+              case ${answ,,} in
+                "c"|"crop") break ;;
+                "f"|"fit") this_crop=false; break ;;
+                "a"|"abort") exit 1 ;;
+                *) error_message "Unknown answer" ;;
+              esac
+            fi            
           done
         fi
     fi
@@ -299,6 +343,7 @@ while [ "$#" -gt 0 ]
 
 
     ### Convert, print or display
+    info_message "Processing image $image..."
 
     if [ "$print_type" == "stickers" ]
     then
@@ -346,6 +391,8 @@ while [ "$#" -gt 0 ]
               -extent "$final_extent" png:- -quality $final_quality jpg:- \
           | $print_or_preview
     fi
+    
+#     hide_info_message
 
     shift
 done

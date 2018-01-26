@@ -10,6 +10,6 @@ Actions=print-selphy
 [Desktop Action print-selphy]
 Name=Selphy-Print
 Icon=/usr/share/icons/default.kde4/base/256x256/devices/printer-laser.png
-Exec=~/Scripts/print-selphy -p  %F
+Exec=~/Scripts/print-selphy -p  %F; true
 
 

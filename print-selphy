@@ -79,7 +79,7 @@ print_help () {
 
 info_messagePID=""
 info_message() {
-    >&2 printf "$1"
+    >&2 printf "$1\n"
     if [ "$use_kde_dialogs" = true ]; then
 #         kdialog --msgbox "$1" --title "$dialog_title" & info_messagePID=$! 
         kdialog --passivepopup "$1" --title "$dialog_title" & info_messagePID=$! 
@@ -101,6 +101,18 @@ error_message() {
 
 
 
+exit_with_error() {
+    rm -rf ${tmpdir}
+    exit 1
+}
+
+exit_with_success() {
+    rm -rf ${tmpdir}
+    exit 0
+}
+
+
+
 ### Parse command line arguments
 
 gravity="Center"
@@ -117,7 +129,10 @@ use_kde_dialogs=true # Set to true to use KDEs kdialog instead of command line
 dialog_title="Canon CP1300 Selphy Printer"
 
 # viewer="display"
-viewer='feh --scale-down -'
+viewer='feh'
+
+viewer_parameters="" # display
+viewer_parameters=" --scale-down" # feh
 
 
 
@@ -170,7 +185,7 @@ do
             then
               >&2 error_message "unknown option '$k'"
               usage
-              exit 1
+              exit_with_error
             else
               POSITIONAL+=("$k") # save it in an array for later
           fi
@@ -185,7 +200,7 @@ if [ $# == 0 ]
   then
     error_message "Missing Parameters.\nPlease see command line for help"
     usage
-    exit 1
+    exit_with_error
 fi
 
 # Check print type
@@ -199,9 +214,13 @@ fi
 if [ "$#" -lt 1 ]
   then
     >&2 error_message "Need at least one image file"
-    exit 1
+    exit_with_error
 fi
 
+tmpdir=$(mktemp -dp "/tmp" "selphy-print.XXXXXX") || {
+    >&2 error_message "Cannot create tmp directory in /tmp!"
+    exit_with_error
+}
 
 ### Check configuration
 
@@ -231,16 +250,12 @@ case $print_type in
         img_extent="1024x640"
         final_extent="1088x668"
         expected_ratio="5/4"
-        tmpdir=$(mktemp -dp "/tmp" "selphy-print.XXXXXX") || {
-            >&2 error_message "Cannot create tmp directory in /tmp!"
-            exit 1
-        }
-        trap "exit 1" TERM HUP INT ERR
+        trap "exit_with_error" TERM HUP INT ERR
         trap "[ -d $tmpdir ] && rm -f $tmpdir/t[1-8].png && rmdir $tmpdir" 0
         ;;
     *)
         >&2 error_message "Unknown print type: $print_type"
-        exit 1 ;;
+        exit_with_error ;;
 esac
  
 check=true
@@ -274,24 +289,24 @@ fi
 if ! ${check}
   then
     >&2 error_message "Some utilities are missing, quitting"
-    exit 1
+    exit_with_error
 fi
 
 # Border mask
 bordermaskfile=$(dirname $(readlink -f $0))/card-border-mask.png
 $round && [ ! -f "${bordermaskfile}" ] && {
     >&2 error_message "File ${bordermaskfile} is missing"
-    exit 1
+    exit_with_error
 }
 
 $preview || lpq -P "${cups_printer_name}" >/dev/null 2>&1 || {
     >&2 error_message "Can't check printer ${cups_printer_name} status"
-    exit 1
+    exit_with_error
 }
 
-$preview \
-    && print_or_preview="$viewer" \
-    || print_or_preview="lpr -o raw -P ${cups_printer_name}"
+# $preview \
+#     && print_or_preview="$viewer" \
+#     || print_or_preview="lpr -o raw -P ${cups_printer_name}"
 
 
 ### Check image
@@ -306,14 +321,14 @@ while [ "$#" -gt 0 ]
     if ! [ -f "$image" ]
       then        
         >&2 error_message "Image $image not found"
-        exit 1 
+        exit_with_error 
     fi
 
     # Portrait or landscape?
     read img_width img_height < <(identify -format "%w %h" "$image") || true
     ( [ -z "$img_width" ] || [ -z "$img_height" ] ) && {
         >&1 error_message "Cannot read geometry of image $image"
-        exit 1
+        exit_with_error
     }
     [ "$img_width" -lt "$img_height" ] && portrait=true || portrait=false
     [ "$print_type" == "stickers" ] \
@@ -347,7 +362,7 @@ while [ "$#" -gt 0 ]
               case $? in
                 0) break ;;
                 1) this_crop=false; break ;;
-                2) exit 1 ;;
+                2) exit_with_error ;;
               esac
             else          
               echo -n "Crop, Fit, Abort? "
@@ -355,7 +370,7 @@ while [ "$#" -gt 0 ]
               case ${answ,,} in
                 "c"|"crop") break ;;
                 "f"|"fit") this_crop=false; break ;;
-                "a"|"abort") exit 1 ;;
+                "a"|"abort") exit_with_error ;;
                 *) error_message "Unknown answer" ;;
               esac
             fi            
@@ -367,7 +382,7 @@ while [ "$#" -gt 0 ]
 
 
     ### Convert, print or display
-    info_message "Processing image $image..."
+    info_message "Preparing image $image..."
 
     if [ "$print_type" == "stickers" ]
     then
@@ -401,7 +416,7 @@ while [ "$#" -gt 0 ]
               | composite -geometry "+764+330" png:"${tmpdir}/t8.png" png:- png:- \
               | convert -page "$page_shift" -background white -flatten \
                   -extent "$final_extent" png:- -quality $final_quality jpg:- \
-              | $print_or_preview
+              > ${tmpdir}/printFile
           else
             # Process next file before doing anything
             shift
@@ -414,12 +429,23 @@ while [ "$#" -gt 0 ]
           | ( $round && composite "${bordermaskfile}" png:- png:- || cat ) \
           | convert -page "$page_shift" -background white -flatten \
               -extent "$final_extent" png:- -quality $final_quality jpg:- \
-          | $print_or_preview
+          > ${tmpdir}/printFile
     fi
     
-#     hide_info_message
-
+    print="lpr -o raw -P ${cups_printer_name}"
+    
+    # preview
+    if [ "$preview" = "true" ]; then
+        $viewer $viewer_parameters ${tmpdir}/printFile
+        
+        kdialog --yesno "Print image?" --title "$dialog_title"
+        case $? in
+            0) info_message "Printing..."; cat ${tmpdir}/printFile | $print; break ;; # print
+            1) info_message "Printing canceled"; exit_with_error ;; # abort
+        esac
+    fi
+    
     shift
 done
 
-exit 0
+exit_with_success

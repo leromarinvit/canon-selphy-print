@@ -306,7 +306,7 @@ $preview || lpq -P "${cups_printer_name}" >/dev/null 2>&1 || {
 
 # $preview \
 #     && print_or_preview="$viewer" \
-#     || print_or_preview="lpr -o raw -P ${cups_printer_name}"
+#     || print_or_preview="lpr -o -P ${cups_printer_name}"
 
 
 ### Check image
@@ -432,16 +432,16 @@ while [ "$#" -gt 0 ]
           > ${tmpdir}/printFile
     fi
     
-    print="lpr -o raw -P ${cups_printer_name}"
+    print="lpr -P ${cups_printer_name}"
     
     # preview
     if [ "$preview" = "true" ]; then
-        $viewer $viewer_parameters ${tmpdir}/printFile
+        $viewer $viewer_parameters ${tmpdir}/printFile &
         
         kdialog --yesno "Print image?" --title "$dialog_title"
         case $? in
-            0) info_message "Printing..."; cat ${tmpdir}/printFile | $print; break ;; # print
-            1) info_message "Printing canceled"; exit_with_error ;; # abort
+            0) info_message "Printing..."; killall -9 $viewer; cat ${tmpdir}/printFile | $print; break ;; # print
+            1) info_message "Printing canceled"; killall -9 $viewer; exit_with_error ;; # abort
         esac
     fi
     

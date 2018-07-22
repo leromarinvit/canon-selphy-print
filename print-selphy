@@ -432,7 +432,7 @@ while [ "$#" -gt 0 ]
           > ${tmpdir}/printFile
     fi
     
-    print="lpr -P ${cups_printer_name}"
+    print="lpr -o raw -P ${cups_printer_name}"
     
     # preview
     if [ "$preview" = "true" ]; then

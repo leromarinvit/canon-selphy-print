@@ -70,8 +70,6 @@ print_help () {
   echo "  -p, --preview       Display a print preview instead of sending to printer."
   echo "                      Preview is displayed using Imagemagick 'display' command."
   echo "                      Click on the image to show menu, press q to quit."
-  echo "  -P, --printer NAME  Set the Selphy printer name, as seen by CUPS."
-  echo "                      Defaults to $cups_printer_name"
   echo "  -r, --round         Rounds the corners of the image. Available for cards only."
   echo "                      This trims the image. Use --preview to see how much."
   echo
@@ -121,7 +119,6 @@ global_crop=false
 preview=false
 border=false
 round=false
-cups_printer_name="Canon_SELPHY_CP1300"
 
 default_printtype="postcard" # Set to "" to use command line parameter <print type> 
 
@@ -172,10 +169,6 @@ do
           ;;
         -p|--preview)
           preview=true
-          ;;
-        -P|--printer)
-          cups_printer_name="$2"
-          shift # past value
           ;;
         -r|--round)
           round=true
@@ -296,11 +289,6 @@ fi
 bordermaskfile=$(dirname $(readlink -f $0))/card-border-mask.png
 $round && [ ! -f "${bordermaskfile}" ] && {
     >&2 error_message "File ${bordermaskfile} is missing"
-    exit_with_error
-}
-
-$preview || lpq -P "${cups_printer_name}" >/dev/null 2>&1 || {
-    >&2 error_message "Can't check printer ${cups_printer_name} status"
     exit_with_error
 }
 
@@ -432,7 +420,7 @@ while [ "$#" -gt 0 ]
           > ${tmpdir}/printFile
     fi
     
-    print="lpr -o raw -P ${cups_printer_name}"
+    print="selphy ${tmpdir}/printFile"
     
     # preview
     if [ "$preview" = "true" ]; then
@@ -440,7 +428,7 @@ while [ "$#" -gt 0 ]
         
         kdialog --yesno "Print image?" --title "$dialog_title"
         case $? in
-            0) info_message "Printing..."; killall -9 $viewer; cat ${tmpdir}/printFile | $print; break ;; # print
+            0) info_message "Printing..."; killall -9 $viewer; $print; break ;; # print
             1) info_message "Printing canceled"; killall -9 $viewer; exit_with_error ;; # abort
         esac
     fi

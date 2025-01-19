@@ -431,6 +431,8 @@ while [ "$#" -gt 0 ]
             0) info_message "Printing..."; killall -9 $viewer; $print; break ;; # print
             1) info_message "Printing canceled"; killall -9 $viewer; exit_with_error ;; # abort
         esac
+    else
+	$print
     fi
     
     shift

@@ -222,7 +222,7 @@ case $print_type in
     "postcard") # 100x148 mm
         $border && imggeom="1700x1130" || imggeom="1760x1190"  # border is 60px = 5 mm
         round=false # NB: round not suitable for postcards
-        page_shift="+46+34"
+        page_shift="+46+30"
         img_extent="1760x1190"
         final_extent="1872x1248"
         expected_ratio="3/2"

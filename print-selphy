@@ -416,7 +416,10 @@ while [ "$#" -gt 0 ]
             -gravity $gravity -extent "$img_extent" "$image" png:- \
           | ( $round && composite "${bordermaskfile}" png:- png:- || cat ) \
           | convert -page "$page_shift" -background white -flatten \
-              -extent "$final_extent" png:- -quality $final_quality jpg:- \
+	      -extent "$final_extent" \
+	      -gravity northwest -pointsize 27 -weight Bold -annotate 90x90+1832+40 "$(basename "$image")" +gravity \
+	      -gravity southeast -pointsize 27 -weight Bold -annotate 90x90+152+90 "$(identify -format '%[EXIF:DateTimeOriginal]' "$image" | sed 's/:/-/; s/:/-/')" +gravity \
+              png:- -quality $final_quality jpg:- \
           > ${tmpdir}/printFile
     fi
     
